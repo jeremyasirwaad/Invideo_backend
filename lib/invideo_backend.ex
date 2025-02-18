@@ -47,7 +47,6 @@ defmodule InvideoBackend.Router do
 
   defp call_openai_api(input) do
     # Replace with your actual API key
-    api_key = ""
 
     headers = [
       {"Content-Type", "application/json"},
