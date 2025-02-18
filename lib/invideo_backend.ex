@@ -1,3 +1,5 @@
+require Logger
+
 defmodule InvideoBackend.Router do
   use Plug.Router
   use HTTPoison.Base
@@ -13,7 +15,12 @@ defmodule InvideoBackend.Router do
     |> Plug.Conn.put_resp_header("access-control-allow-headers", "Content-Type, Authorization")
   end
 
+  get "/" do
+    Logger.error("Printing the error")
+  end
+
   post "/process" do
+    Logger.error("Got a request")
     {:ok, body, conn} = Plug.Conn.read_body(conn)
     conn = add_cors_headers(conn)
 
@@ -26,6 +33,7 @@ defmodule InvideoBackend.Router do
             send_resp(conn, 200, response_body)
 
           {:error, reason} ->
+            Logger.error(inspect(reason))
             send_resp(conn, 500, Jason.encode!(%{error: reason}))
         end
 
@@ -71,7 +79,6 @@ defmodule InvideoBackend.Router do
       precision highp float;
       uniform vec2 u_resolution;
       uniform float u_time;
-      attribute vec3 position;
       varying vec2 v_uv;
 
       void main() {
@@ -100,6 +107,7 @@ defmodule InvideoBackend.Router do
       Must accept attribute vec3 position;.
       Must output texture coordinates as a varying variable (e.g., varying vec2 v_uv;).
       gl_Position must be set correctly using position.
+      Do not define the attribute position, as three.js already defines it.
 
       4. Fragment Shader Requirements
       Must define precision highp float;.
@@ -107,10 +115,10 @@ defmodule InvideoBackend.Router do
       Must output a color using gl_FragColor.
       Should use u_resolution to ensure correct scaling.
       Should avoid discarding pixels (discard;) unless absolutely necessary.
+      Explicitly declare uniform float u_time; in the fragment shader
 
       5. Restrictions
       Do not use non-standard extensions (e.g., #extension GL_OES_standard_derivatives).
-      Do not define main uniforms (u_time, u_resolution) explicitly in JavaScript—they are already provided.
       Avoid defining your own attributes like attribute vec3 position; outside the standard ones.
       No dependencies on external textures (this renderer does not support texture sampling).
       Avoid infinite loops in the fragment shader (while(true) {}), as it may cause performance issues.
@@ -123,7 +131,7 @@ defmodule InvideoBackend.Router do
 
     #{input}
 
-    # Output:
+    # Output json:
     """
 
     body =
