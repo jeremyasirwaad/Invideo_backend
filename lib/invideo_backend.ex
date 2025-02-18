@@ -2,8 +2,8 @@ defmodule InvideoBackend.Router do
   use Plug.Router
   use HTTPoison.Base
 
-  plug :match
-  plug :dispatch
+  plug(:match)
+  plug(:dispatch)
 
   # Add CORS headers to the response
   defp add_cors_headers(conn) do
@@ -47,23 +47,97 @@ defmodule InvideoBackend.Router do
 
   defp call_openai_api(input) do
     # Replace with your actual API key
+    api_key = System.get_env("OPENAI_API_KEY")
 
     headers = [
       {"Content-Type", "application/json"},
       {"Authorization", "Bearer #{api_key}"}
     ]
 
-    body = Jason.encode!(%{
-      model: "gpt-4o",
-      response_format: %{type: "json_object"},
-      messages: [
-        %{
-          role: "system",
-          content: "You are a helpful assistant who creates a very simple sharder code that will work for the below code. return only the sharder code text as string, no need to assign to any variables and etc // ShaderRenderer.js import React, { useRef, useMemo } from 'react'; import { Canvas, useFrame } from '@react-three/fiber'; import { ShaderMaterial, PlaneGeometry, MeshBasicMaterial } from 'three'; import { extend } from '@react-three/fiber'; import PropTypes from 'prop-types'; // Extend will make the shader material available as a JSX element extend({ ShaderMaterial }); const ShaderMesh = ({ shader }) => { const meshRef = useRef(); // Split the combined shader into vertex and fragment shaders const [vertexShader, fragmentShader] = useMemo(() => { const [vShader, fShader] = shader.split('#fragment'); return [vShader.replace('#vertex', '').trim(), fShader.trim()]; }, [shader]); // Create the shader material const shaderMaterial = useMemo(() => { return new ShaderMaterial({ vertexShader, fragmentShader, uniforms: { u_time: { value: 0.0 }, // Add more uniforms here if needed }, // If you need to enable lighting or other features, set the appropriate flags // lights: true, }); }, [vertexShader, fragmentShader]); // Update the uniform 'u_time' on each frame useFrame((state, delta) => { shaderMaterial.uniforms.u_time.value += delta; }); return ( <mesh ref={meshRef} material={shaderMaterial}> {/* Default Geometry: Plane */} {/* You can change this to other geometries like boxGeometry, sphereGeometry, etc. */} <planeGeometry args={[2, 2, 1, 1]} /> </mesh> ); }; ShaderMesh.propTypes = { shader: PropTypes.string.isRequired, }; const ShaderRenderer = ({ shader }) => { return ( <Canvas> <ShaderMesh shader={shader} /> </Canvas> ); }; ShaderRenderer.propTypes = { shader: PropTypes.string.isRequired, }; export default ShaderRenderer; You should return in json format. Format: {“code”: <sharder as string here>} "
-        },
-        %{role: "user", content: input}
-      ]
-    })
+    prompt =
+      """
+      You are a helpful assistant who generates shader code.
+      You will be given the description of the shader to generate.
+
+      # Shader Writing Rules
+      1. Shader Structure
+      The shader must be written in GLSL (OpenGL Shading Language).
+      It should contain both a vertex shader and a fragment shader in a single string, separated by #fragment.
+      The vertex shader must start with #vertex, and the fragment shader should follow after #fragment.
+
+      Example format:
+      ```glsl
+      #vertex
+      precision highp float;
+      uniform vec2 u_resolution;
+      uniform float u_time;
+      attribute vec3 position;
+      varying vec2 v_uv;
+
+      void main() {
+      v_uv = position.xy * 0.5 + 0.5;
+      gl_Position = vec4(position, 1.0);
+      }
+
+      #fragment
+      precision highp float;
+      uniform vec2 u_resolution;
+      uniform float u_time;
+      varying vec2 v_uv;
+
+      void main() {
+      gl_FragColor = vec4(v_uv, sin(u_time), 1.0);
+      }```
+
+      2. Uniforms Available
+      Your shader will receive the following uniforms:
+
+      uniform float u_time; – The elapsed time in seconds, updated every frame.
+      uniform vec2 u_resolution; – The current viewport width and height in pixels.
+
+      3. Vertex Shader Requirements
+      Must define precision highp float;.
+      Must accept attribute vec3 position;.
+      Must output texture coordinates as a varying variable (e.g., varying vec2 v_uv;).
+      gl_Position must be set correctly using position.
+
+      4. Fragment Shader Requirements
+      Must define precision highp float;.
+      Must declare varying vec2 v_uv; if texture coordinates are needed.
+      Must output a color using gl_FragColor.
+      Should use u_resolution to ensure correct scaling.
+      Should avoid discarding pixels (discard;) unless absolutely necessary.
+
+      5. Restrictions
+      Do not use non-standard extensions (e.g., #extension GL_OES_standard_derivatives).
+      Do not define main uniforms (u_time, u_resolution) explicitly in JavaScript—they are already provided.
+      Avoid defining your own attributes like attribute vec3 position; outside the standard ones.
+      No dependencies on external textures (this renderer does not support texture sampling).
+      Avoid infinite loops in the fragment shader (while(true) {}), as it may cause performance issues.
+
+      Output Format: {“code”: <sharder as string here>}
+      """
+
+    user_prompt = """
+    # Description of the shader to generate:
+
+    #{input}
+
+    # Output:
+    """
+
+    body =
+      Jason.encode!(%{
+        model: "gpt-4o",
+        response_format: %{type: "json_object"},
+        messages: [
+          %{
+            role: "system",
+            content: prompt
+          },
+          %{role: "user", content: user_prompt}
+        ]
+      })
 
     url = "https://api.openai.com/v1/chat/completions"
 
